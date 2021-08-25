@@ -9,4 +9,5 @@ An extensive portfolio of ML projects with proper documentation and notes on eac
 - Identifying Risky Loans using decision trees (C50)
 - Strom Data Analysis of the NOAA Database
 - Diagnosing Breast Cancer with k-NN Classification Algorithm (class, gmodels)
-- All projects have been created using R Markdown and published publically to rpubs.com/shreyaskhadse
+
+All projects have been created using R Markdown and published publically to [RPubs](rpubs.com/shreyaskhadse)

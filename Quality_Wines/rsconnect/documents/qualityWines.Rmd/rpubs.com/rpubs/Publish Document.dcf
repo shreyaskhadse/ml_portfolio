@@ -1,0 +1,11 @@
+name: Publish Document
+title:
+username:
+account: rpubs
+server: rpubs.com
+hostUrl: rpubs.com
+appId: https://api.rpubs.com/api/v1/document/765368/e8896881ee10449482d5fc2e33c8006a
+bundleId: https://api.rpubs.com/api/v1/document/765368/e8896881ee10449482d5fc2e33c8006a
+url: http://rpubs.com/shreyaskhadse/765368
+when: 1620216041.79796
+lastSyncTime: 1620216041.79796

@@ -1,0 +1,257 @@
+---
+title: "Estimating the Quality of Wines"
+subtitle: "With regression trees and model trees"
+author: "Shreyas Khadse"
+output: md_document
+  # prettydoc::html_pretty:
+  #     theme: leonids
+---
+
+## Introduction 
+
+Winemaking is a challenging and competitive business that offers the potential
+for great profit. However, there are numerous factors that contribute to the
+profitability of a winery. As an agricultural product, variables as diverse as the
+weather and the growing environment impact the quality of a varietal. The bottling
+and manufacturing can also affect the flavor for better or worse. Even the way
+the product is marketed, from the bottle design to the price point, can affect the
+customer's perception of taste.
+
+As a consequence, the winemaking industry has invested heavily in data
+collection and machine learning methods that may assist with the decision science
+of winemaking.
+
+## Collecting data
+
+To develop the wine rating model, we will use data by P. Cortez, A. Cerdeira,
+F. Almeida, T. Matos, and J. Reis. Their dataset includes examples of red and white
+Vinho Verde wines from Portugal—one of the world's leading wine-producing
+countries. Because the factors that contribute to a highly rated wine may differ
+between the red and white varieties, for this analysis we will examine only the
+more popular white wines.
+
+The white wine data includes information on 11 chemical properties of 4,898 wine
+samples. For each wine, a laboratory analysis measured characteristics such as the
+acidity, sugar content, chlorides, sulfur, alcohol, pH, and density. The samples were
+then rated in a blind tasting by panels of no less than three judges on a quality scale
+ranging from zero (very bad) to 10 (excellent). In the case that the judges disagreed
+on the rating, the median value was used.
+
+For ease to acces the dataset I have hosted a public repository and included the code 
+that directly downloads the data from the repo and loads the data. The path can be canged 
+to anythig according to your preference of the working directory.
+
+```{r}
+set.seed(6799)
+path <- "A:/Project/Quality_Wines"
+setwd(path)
+url <- "https://raw.githubusercontent.com/shreyaskhadse/data_files/master/whitewines.csv"
+datafile <- "./whitewines.csv"
+if (!file.exists(datafile)) {
+    download.file(url, datafile ,method="auto") }
+wine <- read.csv("whitewines.csv")
+str(wine)
+```
+
+
+## Exploring and Cleaning data
+
+Compared with other types of machine learning models, one of the advantages of
+trees is that they can handle many types of data without preprocessing. This means
+we do not need to normalize or standardize the features.
+
+We now examine the distribution of the outcome variable is needed
+to inform our evaluation of the model's performance. For instance, suppose that
+there was very little variation in quality from wine to wine, or that wines fell into
+a bimodal distribution: either very good or very bad. This may impact the way we
+design the model. To check for such extremes, we can examine the distribution of
+wine quality using a histogram:
+
+```{r}
+library(ggplot2)
+ggplot( wine, aes(x = quality))+geom_histogram(aes(y = ..density..), color = "black", binwidth = 1)+labs(title = "Histogram of wine quality", x = "Qualtiy", y = "Frequency") +
+  stat_function(fun = dnorm, args = list(mean = mean(wine$quality),sd = sd(wine$quality)),col = "steelblue",size = 1)
+```
+
+The wine quality values appear to follow a fairly normal, bell-shaped distribution,
+centered around a value of six. This makes sense intuitively, because most wines
+are of average quality; few are particularly bad or good.
+
+Now we divide the dataset into training and testing sets. Since
+the wine dataset was already sorted randomly, we can partition into two sets
+of contiguous rows as follows:
+
+```{r}
+wine_train <- wine[1:3750,]
+wine_test <- wine[3751:4898,]
+```
+
+## Training a model on the data
+
+We will begin by training a regression tree model. Although almost any
+implementation of decision trees can be used to perform regression tree modeling,
+the `rpart` (recursive partitioning) package offers the most faithful implementation
+of regression trees as they were described by the CART team.
+
+```{r}
+#install.packages("rpart")
+library(rpart)
+m.rpart <- rpart(quality ~ ., data = wine_train)
+m.rpart
+summary(m.rpart)
+```
+
+`alcohol` has the highest importance as a predictor, followed by `density`.
+
+For each node in the tree, the number of examples reaching the decision point is
+listed. For instance, all 3,750 examples begin at the root node, of which 2,473 have
+`alcohol < 10.85` and 1,277 have `alcohol >= 10.85`. Because alcohol was used
+first in the tree, it is the single most important predictor of wine quality.
+
+Nodes indicated by * are terminal or leaf nodes, which means that they result
+in a prediction (listed here as yval). For example, node 5 has a `yval` of 5.881912.
+When the tree is used for predictions, any wine samples with `alcohol < 10.85`
+and volatile.acidity < 0.2425 would therefore be predicted to have a quality
+value of 5.881912.
+
+```{r}
+#install.packages("rpart.plot")
+library(rpart.plot)
+rpart.plot(m.rpart, digits = 3, box.palette = "BuGn")
+#rpart.plot(m.rpart, digits = 4, fallen.leaves = TRUE,type = 3, extra = 101)
+```
+
+
+## Evaluating model performance
+
+To use the regression tree model to make predictions on the test data, we use the
+`predict()` function. By default, this returns the estimated numeric value for the
+outcome variable, which we'll save in a vector named `p.rpart`:
+
+```{r}
+p.rpart <- predict(m.rpart, wine_test)
+"summary(p.part)"
+summary(p.rpart)
+
+"summary(wine_test$quality)"
+summary(wine_test$quality)
+```
+
+This finding suggests that the model is not correctly identifying the extreme cases,
+in particular, the best and worst wines. On the other hand, between the first and
+third quartile, we may be doing well.
+
+The correlation between the predicted and actual quality values provides a simple
+way to gauge the model's performance.
+
+```{r}
+cor(p.rpart, wine_test$quality)
+```
+
+A correlation of 0.49 is certainly acceptable. However, the correlation only measures
+how strongly the predictions are related to the true value; it is not a measure of how
+far off the predictions were from the true values.
+
+Another way to think about the model's performance is to consider how far, on
+average, its prediction was from the true value. This measurement is called the
+mean absolute error (MAE).
+
+```{r}
+MAE <- function(actual, predicted) {mean(abs(actual - predicted))}
+MAE(p.rpart, wine_test$quality)
+```
+
+This implies that, on average, the difference between our model's predictions and
+the true quality score was about 0.59. On a quality scale from zero to 10, this seems
+to suggest that our model is doing fairly well.
+
+On the other hand, recall that most wines were neither very good nor very bad; the
+typical quality score was around five to six. Therefore, a classifier that did nothing
+but predict the mean value may still do fairly well according to this metric.
+
+The mean quality rating in the training data is as follows:
+
+```{r}
+mean(wine_train$quality)
+```
+
+If we predicted the value 5.89 for every wine sample, we would have a mean
+absolute error of only about 0.58:
+
+```{r}
+MAE(5.87, wine_test$quality)
+```
+
+Our regression tree (MAE = 0.57) comes closer on average to the true quality score
+than the imputed mean (MAE = 0.58), but not by much. In comparison, Cortez
+reported an MAE of 0.58 for the neural network model and an MAE of 0.45 for
+the support vector machine. This suggests that there is room for improvement.
+
+## Improving model performance
+
+To improve the performance of our learner, let's apply a model tree algorithm, which
+is a more complex application of trees to numeric prediction.A model tree
+extends regression trees by replacing the leaf nodes with regression models. This
+often results in more accurate results than regression trees, which use only a single
+numeric value for the prediction at the leaf nodes.
+
+The current state-of-the-art in model trees is the Cubist algorithm, which itself is
+an enhancement of the M5 model tree algorithm. The Cubist algorithm involves building a decision tree, creating decision rules based on the branches of the tree, and building a regression model
+at each of the leaf nodes. Additional heuristics, such as pruning and boosting, are
+used to improve the quality of the predictions and smoothness across the range of
+predicted values.
+
+```{r}
+#install.packages("Cubist")
+library(Cubist)
+m.cubist <- cubist(x = wine_train[-12], y = wine_train$quality)
+m.cubist
+summary(m.cubist)
+```
+
+In this output, we see that the algorithm generated 10 rules to model the wine
+quality.
+
+You will note that the `if` portion of the output is somewhat similar to the regression
+tree we built earlier. A series of decisions based on the wine properties of sulfur
+dioxide, sulphates, and alcohol creates a rule culminating in the final prediction.
+A key difference between this model tree output and the earlier regression tree
+output, however, is that the nodes here terminate not in a numeric prediction,
+but rather a linear model.
+
+The linear model for this rule is shown in the then output following the `outcome = statement`
+
+To examine the performance of this model, we'll look at how well it performs on
+the unseen test data. The predict() function gets us a vector of predicted values:
+
+```{r}
+p.cubist <- predict(m.cubist, wine_test)
+summary(p.cubist)
+```
+The correlation also seems to be substantially higher:
+
+```{r}
+"cor()"
+cor(p.cubist, wine_test$quality)
+"MAE"
+MAE(wine_test$quality, p.cubist)
+```
+
+Although we did not improve a great deal beyond the regression tree, we surpassed
+the performance of the neural network model published by Cortez, and we are
+getting closer to the published mean absolute error value of 0.45 for the support
+vector machine model, all while using a much simpler learning method.
+
+
+
+
+
+
+
+
+
+
+
+
+
+

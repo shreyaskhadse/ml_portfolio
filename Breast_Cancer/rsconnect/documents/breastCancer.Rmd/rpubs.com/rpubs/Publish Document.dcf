@@ -1,0 +1,10 @@
+name: Publish Document
+title:
+username:
+account: rpubs
+server: rpubs.com
+hostUrl: rpubs.com
+appId: https://api.rpubs.com/api/v1/document/635115/e645e4c08aed49ad8e16349f012715da
+bundleId: https://api.rpubs.com/api/v1/document/635115/e645e4c08aed49ad8e16349f012715da
+url: http://rpubs.com/shreyaskhadse/635115
+when: 1593796285.39677

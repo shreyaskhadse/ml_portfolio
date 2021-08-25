@@ -1,0 +1,218 @@
+---
+title: "OCR"
+author: "Shreyas Khadse"
+subtitle: "With SVM"
+output: md_document
+  # prettydoc::html_pretty:
+  #     theme: architect
+---
+
+```{r, echo=FALSE}
+knitr::opts_chunk$set(error = TRUE)
+```
+
+## Introduction
+
+Image processing is a difficult task for many types of machine learning algorithms.
+The relationships linking patterns of pixels to higher concepts are extremely complex
+and hard to define. For instance, it's easy for a human being to recognize a face, a cat,
+or the letter "A", but defining these patterns in strict rules is difficult. Furthermore,
+image data is often noisy. There can be many slight variations in how the image was
+captured depending on the lighting, orientation, and positioning of the subject.
+
+SVMs are well suited to tackle the challenges of image data. Capable of learning
+complex patterns without being overly sensitive to noise, they are able to recognize
+visual patterns with a high degree of accuracy.
+
+We will develop a model similar to those used at the core of the
+optical character recognition (OCR) software often bundled with desktop document
+scanners or in smartphone applications. The purpose of such software is to process
+paper-based documents by converting printed or handwritten text into an electronic
+form to be saved in a database.
+
+## Collecting data
+
+When OCR software first processes a document, it divides the paper into a matrix
+such that each cell in the grid contains a single glyph, which is a term referring to a
+letter, symbol, or number. Next, for each cell, the software will attempt to match the
+glyph to a set of all characters it recognizes. Finally, the individual characters can be
+combined into words, which optionally could be spell-checked against a dictionary
+in the document's language.
+
+We'll assume that we have already developed the algorithm to
+partition the document into rectangular regions each consisting of a single glyph.
+We will also assume the document contains only alphabetic characters in English.
+Therefore, we'll simulate a process that involves matching glyphs to one of the
+26 letters, A to Z.
+
+
+We'll use a dataset donated to the UCI Machine Learning Repository
+(http://archive.ics.uci.edu/ml) by W. Frey and D. J. Slate. The dataset contains
+20,000 examples of 26 English alphabet capital letters as printed using 20 different
+randomly reshaped and distorted black-and-white fonts.
+
+The following figure, published by Frey and Slate, provides an example of some of
+the printed glyphs. Distorted in this way, the letters are challenging for a computer
+to identify, yet are easily recognized by a human being:
+
+![Examples of glyphs the SVM algorithm will attempt to identify](A:/Project/OCR/glyphs.PNG)
+
+For ease to acces the dataset I have hosted a public repository and included the code 
+that directly downloads the data from the repo and loads the data. The path can be canged 
+to anythig according to your preference of the working directory.
+
+```{r}
+set.seed(12345)
+path <- "A:/Project/OCR"
+setwd(path)
+url <- "https://raw.githubusercontent.com/shreyaskhadse/data_files/master/letterdata.csv"
+datafile <- "./letterdata.csv"
+if (!file.exists(datafile)) {
+    download.file(url, datafile ,method="auto") }
+letters <- read.csv("letterdata.csv")
+```
+
+## Exploring and preparing data
+
+When the glyphs are scanned into the computer, they are converted into pixels and 16 statistical attributes are recorded.
+
+The attributes measure such characteristics as the horizontal and vertical
+dimensions of the glyph; the proportion of black (versus white) pixels; and the
+average horizontal and vertical position of the pixels. Presumably, differences in
+the concentration of black pixels across various areas of the box should provide
+a way to differentiate among the 26 letters of the alphabet.
+
+```{r}
+str(letters)
+```
+
+SVM learners require all features to be numeric, and moreover, that each feature
+is scaled to a fairly small interval. In this case, every feature is an integer, so we
+do not need to convert any factors into numbers. On the other hand, some of the
+ranges for these integer variables appear fairly wide. This indicates that we need
+to normalize or standardize the data. The R package that we will use for fitting the SVM 
+model will perform the rescaling automatically.
+
+We now split the data into a 80:20 train-test dataset.
+
+```{r}
+letters_train <- letters[1:16000, ]
+letters_test <- letters[16001:20000, ]
+```
+
+## Training a model on the data
+
+The `e1071` package from the Department of Statistics at the Vienna University of Technology (TU Wien) provides an R interface to the award-winning `LIBSVM` library, a widely used open-source SVM program written in C++.
+
+`SVMlight` algorithm, the `klaR` package from the Department of Statistics at the Dortmund University of Technology (TU Dortmund) provides functions to work with this SVM implementation directly from R.
+
+It is perhaps best to begin with the SVM functions in the `kernlab` package. An interesting advantage of this package is that it was developed natively in R rather than C or C++, which allows it to be easily
+customized; none of the internals are hidden behind the scenes. Perhaps even more importantly, unlike the other options, `kernlab` can be used with the `caret` package, which allows SVM models to be trained and evaluated using a variety of automated methods.
+
+```{r cache= TRUE}
+#install.packages("kernlab")
+library(kernlab)
+letter_classifier <- ksvm(letter ~ ., data = letters_train, kernel = "vanilladot")
+letter_classifier
+```
+
+## Evaluating model performance
+
+
+```{r}
+letter_predictions <- predict(object = letter_classifier, letters_test, type = "response")
+head(letter_predictions)
+```
+
+To examine how well our classifier performed, we need to compare the predicted
+letter to the true letter in the testing dataset. We'll use the `table()` function for this
+purpose (only a portion of the full table is shown here):
+
+```{r}
+table(letter_predictions, letters_test$letter)
+```
+
+The diagonal values of 144, 121, 120, 156, and 127 indicate the total number of
+records where the predicted letter matches the true value. Similarly, the number
+of mistakes is also listed.
+
+```{r}
+agreement <- letter_predictions == letters_test$letter
+table(agreement)
+prop.table(table(agreement))
+```
+
+We see that the classifier correctly identified the letter in 3,357 out of the 4,000 test records:
+In percentage terms, the accuracy is about 84 percent.
+
+## Improving model performance
+
+### Changing the SVM kernel function
+
+Our previous SVM model used the simple linear kernel function. By using a more
+complex kernel function, we can map the data into a higher dimensional space, and
+potentially obtain a better model fit.
+
+We begin with the Gaussian RBF (radial basis function) kernel, which has been shown to perform well for many types of data. We can train an RBF-based SVM using the `ksvm()` function:
+
+```{r cache= TRUE}
+letter_classifier_rbf <- ksvm(letter ~ ., data = letters_train, kernel = "rbfdot")
+letter_classifier_rbf
+letter_predictions_rbf <- predict(letter_classifier_rbf, letters_test)
+agreement_rbf <- letter_predictions_rbf == letters_test$letter
+table(agreement_rbf)
+prop.table(table(agreement_rbf))
+```
+
+Simply by changing the kernel function, we were able to increase the accuracy of our
+character recognition model from 84 percent to 93 percent.
+
+### Identifying the best SVM cost parameter
+
+Another fruitful approach is to vary the cost parameter, which modifies the width of the SVM decision boundary. This governs the model's balance between overfitting and underfitting the training
+data—the larger the cost value, the harder the learner will try to perfectly classify every training instance, as there is a higher penalty for each mistake.
+
+We use the `sapply()` function to apply a custom function to a vector of potential cost values.
+We begin by using the `seq()` function to generate this vector as a sequence counting
+from five to 40 by five. Then, as shown in the following code, the custom function
+trains the model as before, each time using the cost value and making predictions
+on the test dataset. Each model's accuracy is computed as the number of predictions
+that match the actual values divided by the total number of predictions. The result
+is visualized using the `plot()` function:
+
+```{r cache= TRUE}
+start.time <- Sys.time()
+cost_values <- c(1, seq(from = 5, to = 40, by = 5))
+accuracy_values <- sapply(cost_values, function(x) {
+  set.seed(12345)
+  m <- ksvm(letter ~ ., data = letters_train,
+            kernel = "rbfdot", C = x)
+  pred <- predict(m, letters_test)
+  agree <- ifelse(pred == letters_test$letter, 1, 0)
+  accuracy <- sum(agree) / nrow(letters_test)
+  return (accuracy)
+})
+end.time <- Sys.time()
+print(round(end.time - start.time))
+```
+
+```{r}
+library(ggplot2)
+df <- data.frame(cost_values, accuracy_values)
+ggplot(df, aes(x = cost_values, y = accuracy_values))+
+  geom_line(color = "steelblue")+
+  geom_point(color = "red")+
+  labs(title = "Accuracy vs Cost Values", x = "Cost Values", y = "Accuracy")
+```
+
+As depicted in the visualization, with an accuracy of 93 percent, the default SVM
+cost parameter of C = 1 resulted in by far the least accurate model among the nine
+models evaluated. Instead, setting C to a value of 10 or higher results in an accuracy
+of around 97 percent. 
+
+
+
+
+
+
+

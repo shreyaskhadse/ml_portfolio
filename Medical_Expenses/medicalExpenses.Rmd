@@ -1,0 +1,265 @@
+---
+title: "Predicting Medical Expenses"
+subtitle: "Using linear regression"
+author: "Shreyas Khadse"
+output: md_document
+  # prettydoc::html_pretty:
+  #     theme: leonids
+---
+
+## Introduction
+
+In order for a health insurance company to make money, it needs to collect more
+in yearly premiums than it spends on medical care to its beneficiaries. Consequently,
+insurers invest a great deal of time and money to develop models that accurately
+forecast medical expenses for the insured population.
+
+Medical expenses are difficult to estimate because the costliest conditions
+are rare and seemingly random. Still, some conditions are more prevalent
+for certain segments of the population. For instance, lung cancer is more likely
+among smokers than non-smokers, and heart disease may be more likely among
+the obese.
+
+The goal of this analysis is to use patient data to forecast the average medical care
+expenses for such population segments. These estimates could be used to create
+actuarial tables that set the price of yearly premiums higher or lower according
+to the expected treatment costs.
+
+
+## Collecting data
+
+For this analysis, we will use a simulated dataset containing hypothetical medical
+expenses for patients in the United States. This data was created for this book using
+demographic statistics from the US Census Bureau, and thus, approximately reflect
+real-world conditions.
+
+For ease to acces the dataset I have hosted a public repository and included the code 
+that directly downloads the data from the repo and loads the data. The path can be canged 
+to anythig according to your preference of the working directory.
+
+```{r}
+path <- "A:/Project/Medical_Expenses"
+setwd(path)
+url <- "https://raw.githubusercontent.com/shreyaskhadse/data_files/master/insurance.csv"
+datafile <- "./insurance.csv"
+if (!file.exists(datafile)) {
+    download.file(url, datafile ,method="auto") }
+insurance <- read.csv("insurance.csv")
+colnames(insurance) <- c("age","sex","bmi","children","smoker","region","expenses")
+str(insurance)
+```
+
+The `insurance.csv` file includes 1,338 examples of beneficiaries currently enrolled
+in the insurance plan, with features indicating characteristics of the patient as well as
+the total medical expenses charged to the plan for the calendar year. The features are:
+
+• `age`: An integer indicating the age of the primary beneficiary (excluding
+those above 64 years, as they are generally covered by the government).
+
+• `sex`: The policy holder's gender: either male or female.
+
+• `bmi`: The body mass index (BMI), which provides a sense of how over
+or underweight a person is relative to their height. BMI is equal to weight
+(in kilograms) divided by height (in meters) squared. An ideal BMI is within
+the range of 18.5 to 24.9.
+
+• `children`: An integer indicating the number of children/dependents covered
+by the insurance plan.
+
+• `smoker`: A yes or no categorical variable that indicates whether the insured
+regularly smokes tobacco.
+
+• `region`: The beneficiary's place of residence in the US, divided into four
+geographic regions: northeast, southeast, southwest, or northwest.
+
+
+Our model's dependent variable is expenses, which measures the medical costs
+each person charged to the insurance plan for the year. Prior to building a regression
+model, it is often helpful to check for normality. Although linear regression does not
+strictly require a normally distributed dependent variable, the model often fits better
+when this is true. Let's take a look at the summary statistics:
+
+```{r}
+summary(insurance$expenses)
+```
+
+Because the mean value is greater than the median, this implies that the distribution
+of insurance expenses is right-skewed. We can confirm this visually using
+a histogram:
+
+```{r}
+hist(insurance$expenses)
+```
+
+As expected, the figure shows a right-skewed distribution. It also shows that the
+majority of people in our data have yearly medical expenses between zero and
+$15,000, in spite of the fact that the tail of the distribution extends far past these
+peaks. Although this distribution is not ideal for a linear regression, knowing
+this weakness ahead of time may help us design a better-fitting model later on.
+
+Before we address that issue, another problem is at hand. Regression models require
+that every feature is numeric, yet we have three factor-type features in our data frame.
+For instance, the `sex` variable is divided into `male` and `female levels`, while `smoker`
+has categories for `yes` and `no`. From the `summary()` output, we know that `region`
+has four levels, but we need to take a closer look to see how they are distributed:
+
+```{r}
+table(insurance$region)
+```
+
+Here, we see that the data has been divided nearly evenly among four geographic regions.
+
+### Exploring relationships among features – the correlation matrix
+
+Before fitting a regression model to data, it can be useful to determine how
+the independent variables are related to the dependent variable and each other.
+A correlation matrix provides a quick overview of these relationships. Given
+a set of variables, it provides a correlation for each pairwise relationship.
+
+To create a correlation matrix for the four numeric variables in the `insurance`
+data frame, use the `cor()` command:
+
+```{r}
+cor(insurance[c("age", "bmi", "children", "expenses")])
+```
+
+None of the correlations in the matrix are very strong, but there are some notable
+associations. For instance, `age` and `bmi` appear to have a weak positive correlation,
+meaning that as someone ages, their body mass tends to increase. There are also
+positive correlations between `age` and `expenses`, bmi and `expenses`, and `children`
+and `expenses`. These associations imply that as age, body mass, and number
+of children increase, the expected cost of insurance goes up
+
+### Visualizing relationships among features – the scatterplot matrix
+
+It can also be helpful to visualize the relationships among numeric features with
+scatterplots. Although we could create a scatterplot for each possible relationship,
+doing so for a large number of features quickly becomes tedious.
+
+```{r}
+pairs(insurance[c("age", "bmi", "children", "expenses")])
+```
+
+Although some look like random cloudsof points, a few seem to display some trends. 
+The relationship between age and expenses displays several relatively straight lines, 
+while the bmi versus expenses plot has two distinct groups of points. It is difficult 
+to detect trends in any of the other plots.
+
+An enhanced scatterplot matrix can be created with the `pairs.panels()` function in 
+the `psych` package.
+
+```{r}
+if(!require(psych)) install.packages("psych",repos = "http://cran.us.r-project.org")
+pairs.panels(insurance[c("age", "bmi", "children", "expenses")])
+```
+
+The oval-shaped object on each scatterplot is a correlation ellipse. It provides a
+visualization of correlation strength. The more the ellipse is stretched, the stronger
+the correlation. An almost perfectly round oval, as with `bmi` and `children`, indicates
+a very weak correlation (in this case 0.01).
+
+The ellipse for `age` and `expenses` in much more stretched, reflecting its stronger
+correlation (0.30). The dot at the center of the ellipse is a point reflecting the means of
+the x axis and y axis variables.
+
+The curve drawn on the scatterplot is called a loess curve. It indicates the general
+relationship between the x axis and y axis variables.The curve for `age` and `children` 
+is an upside-down U, peaking around middle age. This means that the oldest and youngest 
+people in the sample have fewer children on the insurance plan than those around middle 
+age. Because this trend is nonlinear, this finding could not have been inferred from the 
+correlations alone. On the other hand, the loess curve for `age` and `bmi` is a line sloping 
+up gradually, implying that body mass increases with `age`, but we had already inferred this 
+from the correlation matrix.
+
+## Training a model on the data
+
+```{r}
+ins_model <- lm(expenses ~ ., data = insurance)
+ins_model
+```
+
+The beta coefficients indicate the estimated increase in expenses for an increase
+of one unit in each of the features, assuming all other values are held constant. For
+instance, for each additional year of age, we would expect $256.90 higher medical
+expenses on average, assuming everything else is held equal.
+
+the sex feature has two categories: male and female. This will be split into two binary 
+variables, which R names `sexmale` and `sexfemale`. For observations where `sex` = male, 
+then `sexmale` = 1 and `sexfemale` = 0; conversely, if `sex` = female, then `sexmale` = 0 
+and `sexfemale` = 1. The same coding applies to variables with three or more categories.
+For example, R split the four-category feature region into four dummy variables:
+`regionnorthwest, regionsoutheast, regionsouthwest`, and `regionnortheast`.
+
+## Evaluating model performance
+
+```{r}
+summary(ins_model)
+```
+
+our model is performing fairly well. It is not uncommon for regression models of 
+real-world data to have fairly low R-squared values; a value of 0.75 is actually quite good. 
+The size of some of the errors is a bit concerning, but not surprising given the nature of
+medical expense data. However, as shown in the next section, we may be able
+to improve the model's performance by specifying the model in a slightly different way.
+
+## Improving model performance
+
+Based on a bit of subject matter knowledge of how medical costs may be related to
+patient characteristics, we developed what we think is a more accurately specified
+regression formula. To summarize the improvements, we:
+
+• Added a nonlinear term for age
+
+• Created an indicator for obesity
+
+• Specified an interaction between obesity and smoking
+
+```{r}
+insurance$age2 <- insurance$age^2
+insurance$bmi30 <- ifelse(insurance$bmi >= 30, 1, 0)
+ins_model2 <- lm(expenses ~ age + age2 + children + bmi + sex + bmi30*smoker + region, data = insurance)
+summary(ins_model2)
+```
+
+The model fit statistics help to determine whether our changes improved the
+performance of the regression model. Relative to our first model, the R-squared
+value has improved from 0.75 to about 0.87.
+
+Our model is now explaining
+87 percent of the variation in medical treatment costs. Additionally, our theories
+about the model's functional form seem to be validated. The higher-order age2 term
+is statistically significant, as is the obesity indicator, bmi30.
+
+## Making predictions with a regression model
+
+```{r}
+insurance$pred <- predict(ins_model2, insurance)
+cor(insurance$pred, insurance$expenses)
+
+```
+
+The correlation of 0.93 suggests a very strong linear relationship between the
+predicted and actual values. This is a good sign—it suggests that the model is highly
+accurate!
+
+```{r}
+plot(insurance$pred, insurance$expenses)
+abline(a = 0, b = 1, col = "red", lwd = 3, lty = 2)
+```
+
+```{r}
+predict(ins_model2, data.frame(age = 30, age2 = 30^2, children = 2, bmi = 30, sex = "male", bmi30 = 1, smoker = "no", region = "northeast"))
+```
+
+Using this value, the insurance company might need to set its prices to about $6,000
+per year, or $500 per month in order to break even for this demographic group.
+
+```{r}
+predict(ins_model2, data.frame(age = 30, age2 = 30^2, children = 2, bmi = 30, sex = "female", bmi30 = 1, smoker = "no", region = "northeast"))
+```
+
+Note that the difference between these two values, 5972.859 - 6469.683 = -496.824,
+is the same as the estimated regression model coefficient for `sexmale`. On average,
+males are estimated to have about $496 less in expenses for the plan per year, all
+else being equal.
+

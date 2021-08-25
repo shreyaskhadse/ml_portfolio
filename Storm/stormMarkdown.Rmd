@@ -1,0 +1,302 @@
+---
+title: "Storm Data Analysis"
+subtitle: "Analysis of the U.S. National Oceanic and Atmospheric Administration’s (NOAA) storm database"
+author: "Shreyas Khadse"
+
+output: md_document
+  # prettydoc::html_pretty:
+  #     theme: hpstr
+---
+
+## Introduction (Synopsis)
+
+Storms and other severe weather events can cause both public health and economic problems for communities and municipalities. Many severe events can result in fatalities, injuries, and property damage, and preventing such outcomes to the extent possible is a key concern.
+
+This project involves exploring the U.S. National Oceanic and Atmospheric Administration’s (NOAA) storm database. This database tracks characteristics of major storms and weather events in the United States, including when and where they occur, as well as estimates of any fatalities, injuries, and property damage.
+
+In this report,effect of weather events on personal as well as property damages was studied. Barplots were plotted seperately for the top 8 weather events that causes highest fatalities and highest injuries. Results indicate that most Fatalities and injuries were caused by Tornados.Also, barplots were plotted for the top 8 weather events that causes the highest property damage and crop damage.
+
+## Data
+The data for this project comes in the form of a comma-separated-value file compressed via the bzip2 algorithm to reduce its size. You can download the file [here](https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2).
+
+There is also some documentation of the database available. Here you will find how some of the variables are constructed/defined.
+
+[National Weather Service Storm Data Documentation](https://d396qusza40orc.cloudfront.net/repdata%2Fpeer2_doc%2Fpd01016005curr.pdf)    
+
+[National Climatic Data Centre Strom Events FAQ](https://d396qusza40orc.cloudfront.net/repdata%2Fpeer2_doc%2FNCDC%20Storm%20Events-FAQ%20Page.pdf)
+
+The events in the database start in the year 1950 and end in November 2011. In the earlier years of the database there are generally fewer events recorded, most likely due to a lack of good records. More recent years should be considered more complete.
+
+Now, we proceed with the work environment setting and data loading which is done as below:
+
+```{r, cache=TRUE}
+#setting working directory
+setwd("A:/Project/Storm")
+
+#setting url
+url <- "https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2"    
+
+#setting file name
+file <- "StormData.csv.bz2"   
+
+#downloading file if not downloaded
+if (!file.exists(file)) {
+  download.file(url, file, mode = "wb")
+}
+
+#reading file
+raw_data <- read.csv(file = file, header=TRUE, sep=",", stringsAsFactors = FALSE)
+```
+
+`read.csv` convniently reads our data and stores it to `raw_data` which we are going to process in the future steps. The file is comma seperated hence we use `sep=","`. We dont want the text in columns to be read as factors, so we use `stringsAsFactors = FALSE`, when necessary we will typecast the variables we need as vectors.
+
+We now take a look at the data:
+
+```{r}
+str(raw_data)
+```
+
+As we can see that there are `902297 obs. of  37 variables`. Many of these we dont need at this instance in our study hence we will now begin to process the `raw_data`.
+
+## Data Processing
+
+Now, since we are going to process we would not like to overwrite the original dataset hence, `data <- raw_data` a new copy is made. We saw above while using `str()` that the `BGN_DATE` also has time in it which is `0:00:00` across all observations in that column. This creates extra confusion and makes our data untidy, we would like to remove it. The we can freely typecast this `BGN_DATE` column into a date format by using `as.Date()`:
+
+```{r, cache= TRUE}
+#making a copy
+data <- raw_data    
+
+#removing " 0:00:00"
+data$BGN_DATE <- gsub(" 0:00:00", "", data$BGN_DATE)    
+
+#typecast to date format
+data$BGN_DATE <- as.Date(data$BGN_DATE, format = "%m/%d/%Y")    
+str(data$BGN_DATE)
+```
+
+According to NOAA, the data recording start from Jan. 1950. At that time, they recorded only one event type - tornado. They added more events gradually, and only from Jan 1996 they started recording all events type. Since our objective is comparing the effects of different weather events, we need only to include events that started not earlier than Jan 1996.
+
+```{r}
+#subsetting by date
+data <- subset(data, data$BGN_DATE > as.Date(as.character("12/31/1995"), format = "%m/%d/%Y"))
+```
+
+Based on the above mentioned documentation and preliminary exploration of raw data with `str()` and other similar functions we can conclude that there are 7 variables we are interested in this study.
+
+Namely: `EVTYPE, FATALITIES, INJURIES, PROPDMG, PROPDMGEXP, CROPDMG, CROPDMGEXP`.
+Therefore, we can limit our data to these variables.
+
+```{r}
+#subsetting by variables
+data <- subset(data, select = c(BGN_DATE, EVTYPE, FATALITIES, INJURIES, 
+                                          PROPDMG, PROPDMGEXP, CROPDMG, CROPDMGEXP))
+str(data)
+```
+
+Contents of data now are as follows:
+
+`EVTYPE` – type of event
+`FATALITIES` – number of fatalities
+`INJURIES` – number of injuries
+`PROPDMG` – the size of property damage
+`PROPDMGEXP` - the exponent values for ‘`PROPDMG`’ (property damage)
+`CROPDMG` - the size of crop damage
+`CROPDMGEXP` - the exponent values for ‘`CROPDMG`’ (crop damage)
+
+There are almost 1000 unique event types in EVTYPE column. Therefore, it is better to limit database to a reasonable number. We can make it by capitalizing all letters in EVTYPE column as well as subsetting only non-zero data regarding our target numbers.
+
+```{r}
+#cleaning event types names
+data$EVTYPE <- toupper(data$EVTYPE)
+
+#eliminating zero data
+data <- data[data$FATALITIES !=0 | 
+                         data$INJURIES !=0 | 
+                         data$PROPDMG !=0 | 
+                         data$CROPDMG !=0,]
+```
+
+Now, we wish to have the `'EVTYPE', 'PROPDMGEXP', 'CROPDMGEXP'` as factors. We can do this at once by using the `lapply` function as below:
+
+```{r}
+#typecasting variables
+factorVars <- c('EVTYPE', 'PROPDMGEXP', 'CROPDMGEXP')
+data[,factorVars] <- lapply(data[,factorVars], as.factor)
+str(data)
+```
+
+Human life is greatly affected by natural disasters, whether it be ecnomically or in terms of health. We now proceed our study with 
+
+## Human Loss
+
+We aggregate fatalities and injuries numbers in order to identify TOP-10 events contributing the total people loss:
+
+```{r}
+#creating cumulative/aggregate column for humanLoss
+humanLoss <- aggregate(cbind(FATALITIES, INJURIES) ~ EVTYPE, data = data, FUN=sum)
+humanLoss$PEOPLE_LOSS <- humanLoss$FATALITIES + humanLoss$INJURIES
+humanLoss <- humanLoss[order(humanLoss$PEOPLE_LOSS, decreasing = TRUE), ]
+Top10Eve <- humanLoss[1:10,]
+Top10Eve
+```
+
+We can clearly see that the the event causing the most human loss is `TORNADO`. To present this better and visualize the comparative scale, we will now create a barplot. For this purpose we will use the `GGPLO2 library and the process to create this is below:
+
+```{r}
+#loading ggplot2
+library(ggplot2)
+
+#creating plot
+ggplot(data = Top10Eve, aes(x = reorder(EVTYPE, PEOPLE_LOSS), y = PEOPLE_LOSS)) + 
+  geom_bar(stat = "identity", fill = "#A752AD") + 
+  labs(title = "Total people loss in USA by weather events in 1996-2011")+ 
+  theme(plot.title = element_text(hjust = 0.5))+ 
+  labs(y = "Number of fatalities and injuries", x = "Event Type") + 
+  coord_flip()
+```
+
+## Economic Loss
+
+The number/letter in the exponent value columns (PROPDMGEXP and CROPDMGEXP) represents the power of ten (10^The number). It means that the total size of damage is the product of PROPDMG and CROPDMG and figure 10 in the power corresponding to exponent value.
+
+letters (`B` = Billion, `M` = Million, `K` = Thousand)
+We, will now substitute them with the 10's exponent value and then typecast them `as.numeric()` since we need to compute the actual loss.
+
+First we do this for `PROPDMGEXP`:
+
+```{r}
+#substituting values
+data$PROPDMGEXP <- gsub("K", "3", data$PROPDMGEXP)
+data$PROPDMGEXP <- gsub("M", "6", data$PROPDMGEXP)
+data$PROPDMGEXP <- gsub("B", "9", data$PROPDMGEXP)
+
+#typecasting
+data$PROPDMGEXP <- as.numeric(data$PROPDMGEXP)
+str(data$PROPDMGEXP)
+```
+
+Then, the same for `CROPDMGEXP`
+
+```{r}
+#substituting values
+data$CROPDMGEXP <- gsub("K", "3", data$CROPDMGEXP)
+data$CROPDMGEXP <- gsub("M", "6", data$CROPDMGEXP)
+data$CROPDMGEXP <- gsub("B", "9", data$CROPDMGEXP)
+
+#typecasting
+data$CROPDMGEXP <- as.numeric(data$CROPDMGEXP)
+str(data$CROPDMGEXP)
+```
+
+We, noticed that `PROPDMGEXP` and `CROPDMGEXP` had some `NA` values, which means absence of exponent. So, we will need to substitute them with `0`. We identify the `NA` values with `is.na()`.
+
+```{r}
+#replacing NA values with 0
+data$PROPDMGEXP[is.na(data$PROPDMGEXP)] <- 0
+data$CROPDMGEXP[is.na(data$CROPDMGEXP)] <- 0
+str(data$PROPDMGEXP)
+str(data$CROPDMGEXP)
+```
+
+Now, we compute the total loss by raising 10 to the damage exponent and the multiplying it with the value.
+
+```{r}
+#computing final value
+data$PROPDMGTOT <- (data$PROPDMG *(10 ^ data$PROPDMGEXP))
+data$CROPDMGTOT <- (data$CROPDMG *(10 ^ data$CROPDMGEXP))
+```
+
+Now we aggregate property and crop damage numbers in order to identify TOP-10 events contributing the total economic loss:
+
+```{r}
+economicLoss <- aggregate(cbind(PROPDMGTOT, CROPDMGTOT) ~ EVTYPE, data = data, FUN=sum)
+economicLoss$ECONOMIC_LOSS <- economicLoss$PROPDMGTOT + economicLoss$CROPDMGTOT
+economicLoss <- economicLoss[order(economicLoss$ECONOMIC_LOSS, decreasing = TRUE), ]
+Top10EveEco <- economicLoss[1:10,]
+Top10EveEco
+```
+
+We can clearly see that the the event causing the most economic loss is `FLOOD`. To present this better and visualize the comparative scale, we will now create a barplot. 
+
+```{r}
+ggplot(data = Top10EveEco, aes(x = reorder(EVTYPE, ECONOMIC_LOSS), y = ECONOMIC_LOSS)) +
+  geom_bar(stat = "identity", fill = "#9664AC") +
+  labs(title = "Total economic loss in USA by weather events in 1996-2011")+
+  theme(plot.title = element_text(hjust = 0.5))+
+  labs(y = "Size of property and crop loss", x = "Event Type") +
+  coord_flip()
+```
+
+Just to extend our study let us also take a look at which year was the most expensive in terms of `ECO_LOSS` and `HUMAN_LOSS`.
+
+First we do this by creating the variables that we need:
+`ECO_LOSS` - the sum of property and crop damage
+`HUMAN_LOSS` - the sum of fatalities and injuries
+`YEAR` - striping the year from the `BGN_DATE` column.
+
+Then we aggreage it as we did earlier to create a cumulattive column where the sum is by the variable `YEAR`.
+
+```{r}
+#creating variables
+data$ECO_LOSS <- (data$PROPDMGTOT + data$CROPDMGTOT)
+data$HUMAN_LOSS <- (data$FATALITIES + data$INJURIES)
+data$YEAR <- as.factor(format(data$BGN_DATE,'%Y'))
+
+#creating cumulative column by year
+yearLoss <- aggregate(cbind(ECO_LOSS, HUMAN_LOSS) ~ YEAR , data = data, FUN=sum)
+yearLoss
+```
+
+Lets visualize our findings.
+
+First we plot the economic loss, year wise:
+
+```{r}
+ggplot(data = yearLoss, aes(x = reorder(YEAR, ECO_LOSS), y = ECO_LOSS)) + 
+  geom_bar(stat = "identity", fill = "#8576AC") + 
+  labs(title = "Year wise economic loss by caused by storms")+ 
+  theme(plot.title = element_text(hjust = 0.5))+ 
+  labs(y = "Loss worth", x = "Year") + 
+  coord_flip()
+```
+
+We can see that the year `2006` was the most expensive in terms of economic loss with not so far behind the year `2005`.
+
+Next we have human loss, year wise:
+
+```{r}
+ggplot(data = yearLoss, aes(x = reorder(YEAR, HUMAN_LOSS), y = HUMAN_LOSS)) + 
+  geom_bar(stat = "identity", fill = "#7488AB") + 
+  labs(title = "Year wise human loss by caused by storms")+ 
+  theme(plot.title = element_text(hjust = 0.5))+ 
+  labs(y = "Lives Affected", x = "Year") + 
+  coord_flip()
+```
+
+The year `1998` was the most expensive in terms of human loss.
+
+To explore the reason of our above exploration, let us see which year had the most number of evnts recorded. 
+
+```{r}
+noEve <- as.data.frame(table(data$YEAR))
+names(noEve) <- c("Year", "Number of Events")
+noEve
+```
+
+```{r}
+ggplot(data = noEve, aes(x = Year, y = `Number of Events`)) +
+  geom_bar(stat = "identity", fill = "#639AAA") +
+  labs(title = "Number of events per year") +
+  labs(y= "Number of events", x = "Year")
+
+```
+
+We can see that during the earlier times 1998 was the year with the most number of events and at that time the health care system was not that strong as compared to later times, this may be the reason for the highest human loss in `1998`, followed by the year `2011` which had the maximum number of events in our timeline.
+
+## Summary
+
+Tornados caused the maximum number of fatalities and injuries. It was followed by Excessive Heat for fatalities and Thunderstorm wind for injuries.
+
+Floods caused the maximum property damage where as Drought caused the maximum crop damage. Second major events that caused the maximum damage was Hurricanes/Typhoos for property damage and Floods for crop damage.
+
+`1998` was the year which marked the greatest human loss and `2006` was the year with highest economic loss.
